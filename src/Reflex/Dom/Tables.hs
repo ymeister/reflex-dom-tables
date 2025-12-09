@@ -395,7 +395,7 @@ tableSortRows'
   => TableSortConfig rowHKD
   -> Map key (rowHKD Identity)
   -> Map Int (key, (rowHKD Identity))
-tableSortRows' sortConfig rowsMap = Map.fromAscList $ zip [0..] sortedRowsList
+tableSortRows' sortConfig rowsMap = Map.fromDistinctAscList $ zip [0..] $ sortedRowsList
   where
     sortedRowsList :: [(key, rowHKD Identity)]
     sortedRowsList = case isSortActive of
@@ -432,7 +432,7 @@ tableSortRows' sortConfig rowsMap = Map.fromAscList $ zip [0..] sortedRowsList
         zippedAB = zipHKD @rowHKD @hkt (:*:) a b
     --
     rowsList :: [(key, rowHKD Identity)]
-    rowsList = Map.toList rowsMap
+    rowsList = Map.toAscList rowsMap
 
 -- | Table filtering configuration using higher-kinded data.
 --
