@@ -23,10 +23,27 @@ name:               reflex-dom-tables
 version:            0.1.0.0
 
 -- A short (one-line) description of the package.
-synopsis:           Reflex-DOM tables
+synopsis:           Dynamic table widgets for Reflex-DOM with sorting and filtering
 
 -- A longer description of the package.
--- description:
+description:
+    This package provides flexible table widgets for Reflex-DOM applications.
+    Tables support dynamic data updates, hierarchical headers, and customizable
+    styling through the reflex-dom-attrs package.
+    .
+    Key features:
+    .
+    * Sorting without requiring Ord instances - use custom comparison functions
+    * Row filtering with composable predicates
+    * Multi-level column headers
+    * Type-safe configuration using higher-kinded data patterns
+    * Fine-grained control over HTML attributes for all table elements
+    .
+    The sorting implementation is particularly flexible, allowing you to:
+    .
+    * Sort by some columns while leaving others unsortable
+    * Use domain-specific comparison logic
+    * Sort by computed values without wrapper types
 
 -- URL for the project homepage or repository.
 homepage:           https://github.com/ymeister/reflex-dom-tables
