@@ -1,8 +1,7 @@
 {
-  "owner": "ymeister",
+  "owner": "reflex-frp",
   "repo": "reflex-dom-attrs",
-  "branch": "main",
   "private": false,
-  "rev": "5ad91dc6c158a7792d950e930e3e2e41130fe8ed",
-  "sha256": "0zhf1wwxssys5adq0gmcl0a253z1dbc0xk1aik5dc0vh47yblpds"
+  "rev": "9c328bc81c338550887a5fc782777c23af1f7849",
+  "sha256": "0kbiklb3gx0mjqbznc3m12b56i86mwlwlasy75g498kwrz8byw8n"
 }
