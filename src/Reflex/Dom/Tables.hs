@@ -404,10 +404,10 @@ tableSortRows' sortConfig rowsMap = Map.fromAscList $ zip [0..] sortedRowsList
     --
     isSortActive :: Bool
     isSortActive =
-      or $ execWriter $ traverseHKD @rowHKD @hkt
+      getAny $ execWriter $ traverseHKD @rowHKD @hkt
         ( \columnConfig -> do
             case columnConfig of
-              Compose (Just _) -> tell [True]
+              Compose (Just _) -> tell $ Any True
               _ -> pure ()
             pure columnConfig
         )
