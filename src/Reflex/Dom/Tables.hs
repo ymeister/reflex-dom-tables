@@ -83,7 +83,7 @@ import Reflex.Dom.Tables.Internal
 -- @t@ - Reflex timeline type
 -- @m@ - Monad stack
 data TableConfig key row th td t m = TableConfig
-  { tableConfig_columns :: [TableColumn key row (m th) (m td)]
+  { tableConfig_columns :: [TableColumn key row (m th) (m td) t m]
     -- ^ Column definitions including headers and cell renderers
   , tableConfig_tableAttrs :: [Attrs t m]
     -- ^ Attributes for the @\<table\>@ element
@@ -119,61 +119,65 @@ instance Reflex t => Default (TableConfig key row th td t m) where
 -- @row@ - Row data type
 -- @th@ - Header cell result type
 -- @td@ - Data cell result type
-data TableColumn key row th td
-  = TD (key -> row -> td)
+data TableColumn key row th td t m
+  = TD [Attrs t m] (key -> row -> td)
     -- ^ Data column without header
-  | TH (th, key -> row -> td)
+  | TH [Attrs t m] (th, key -> row -> td)
     -- ^ Column with header and data renderer
-  | THs (th, [TableColumn key row th td])
+  | THs [Attrs t m] (th, [TableColumn key row th td t m])
     -- ^ Hierarchical column with header spanning multiple sub-columns
 
 -- | Extract data cell renderers from column configuration.
--- Flattens nested column structures to get all leaf-level data renderers.
-getTDs :: [TableColumn key row th td] -> [key -> row -> td]
-getTDs tableCols = go tableCols []
+-- Flattens nested column structures to get all leaf-level data renderers with their attributes.
+-- THs propagates its attributes to its subcolumns.
+getTDs :: [TableColumn key row th td t m] -> [([Attrs t m], key -> row -> td)]
+getTDs tableCols = go [] tableCols []
   where
-    go [] !tds = tds
-    go (TD td : cols) !tds = td : go cols tds
-    go (TH (_, td) : cols) !tds = td : go cols tds
-    go (THs (_, thcols) : cols) !tds = go thcols $ go cols tds
+    go _ [] !tds = tds
+    go !parentAttrs (TD attrs td : cols) !tds = (parentAttrs <> attrs, td) : go parentAttrs cols tds
+    go !parentAttrs (TH attrs (_, td) : cols) !tds = (parentAttrs <> attrs, td) : go parentAttrs cols tds
+    go !parentAttrs (THs attrs (_, thcols) : cols) !tds = go (parentAttrs <> attrs) thcols $ go parentAttrs cols tds
 
 -- | Extract header rows from column configuration.
--- Returns a list of header rows, where each cell contains the header value
+-- Returns a list of header rows, where each cell contains the attributes, header value
 -- and its colspan. Handles hierarchical headers by returning multiple rows.
-getTHRows :: [TableColumn key row th td] -> [[Maybe (th, Int)]]
-getTHRows tableCols = takeWhile (\ths -> (not $ null ths) && (not $ all (isNothing) ths)) $ fmap (go tableCols) [0 :: Int ..]
+-- THs propagates its attributes to its subcolumns.
+getTHRows :: [TableColumn key row th td t m] -> [[Maybe ([Attrs t m], th, Int)]]
+getTHRows tableCols = takeWhile (\ths -> (not $ null ths) && (not $ all (isNothing) ths)) $ fmap (go [] tableCols) [0 :: Int ..]
   where
-    go [] _ = []
-    go (TD _ : cols) 0 = go cols 0
-    go (TH (h, _) : cols) 0 = Just (h, 1) : go cols 0
-    go (THs (h, thcols) : cols) 0 = Just (h, length thcols) : go cols 0
-    go (TD _ : cols) i = Nothing : go cols i
-    go (TH (_, _) : cols) i = Nothing : go cols i
-    go (THs (_, thcols) : cols) i = go thcols (i - 1) <> go cols i
+    go _ [] _ = []
+    go !parentAttrs (TD _ _ : cols) 0 = go parentAttrs cols 0
+    go !parentAttrs (TH attrs (h, _) : cols) 0 = Just (parentAttrs <> attrs, h, 1) : go parentAttrs cols 0
+    go !parentAttrs (THs attrs (h, thcols) : cols) 0 = Just (parentAttrs <> attrs, h, length thcols) : go parentAttrs cols 0
+    go !parentAttrs (TD _ _ : cols) i = Nothing : go parentAttrs cols i
+    go !parentAttrs (TH _ (_, _) : cols) i = Nothing : go parentAttrs cols i
+    go !parentAttrs (THs attrs (_, thcols) : cols) i = go (parentAttrs <> attrs) thcols (i - 1) <> go parentAttrs cols i
 
 -- | Transform a table column by applying functions to headers and data renderers.
 --
 -- The first function transforms header values, the second transforms data cell renderers.
 -- Recursively applies to nested columns in 'THs'.
 mapTableColumn
-  :: ( (th -> th')
+  :: ( ([Attrs t m] -> [Attrs t' m'])
+     , (th -> th')
      , ((key -> row -> td) -> (key' -> row' -> td'))
      )
-  -> TableColumn key row th td
-  -> TableColumn key' row' th' td'
-mapTableColumn (thF, tdF) tableColumn = go tableColumn
+  -> TableColumn key row th td t m
+  -> TableColumn key' row' th' td' t' m'
+mapTableColumn (attrsF, thF, tdF) tableColumn = go tableColumn
   where
-    go (TD td) = TD $ tdF td
-    go (TH (th, td)) = TH (thF th, tdF td)
-    go (THs (th, thcols)) = THs (thF th, go <$> thcols)
+    go (TD attrs td) = TD (attrsF attrs) (tdF td)
+    go (TH attrs (th, td)) = TH (attrsF attrs) (thF th, tdF td)
+    go (THs attrs (th, thcols)) = THs (attrsF attrs) (thF th, go <$> thcols)
 
 -- | Flipped version of 'mapTableColumn' for more convenient usage with operators.
 forTableColumn
-  :: TableColumn key row th td
-  -> ( (th -> th')
+  :: TableColumn key row th td t m
+  -> ( ([Attrs t m] -> [Attrs t' m'])
+     , (th -> th')
      , ((key -> row -> td) -> (key' -> row' -> td'))
      )
-  -> TableColumn key' row' th' td'
+  -> TableColumn key' row' th' td' t' m'
 forTableColumn = flip mapTableColumn
 
 -- | Result of rendering a table.
@@ -220,8 +224,8 @@ data Table key row th td t m = Table
 --
 -- > data Person = Person { name :: Text, age :: Int }
 -- >
--- > let columns = [ TH (text "Name", \_ p -> text (name p))
--- >               , TH (text "Age", \_ p -> text (T.pack $ show $ age p))
+-- > let columns = [ TH [] (text "Name", \_ p -> text (name p))
+-- >               , TH [] (text "Age", \_ p -> text (T.pack $ show $ age p))
 -- >               ]
 -- > table <- elTable people def { tableConfig_columns = columns }
 elTable
@@ -257,9 +261,10 @@ elTable rows cfg = do
               Nothing -> do
                 void $ elAttrs' "th" (thAttrs Nothing) $ blank
                 pure Nothing
-              Just (header, colspan) -> mdo
+              Just (headerAttrs, header, colspan) -> mdo
                 th@(_, thVal) <- elAttrs' "th"
-                  ( thAttrs (Just thVal)
+                  ( headerAttrs
+                  <> thAttrs (Just thVal)
                   <> case colspan of
                       1 -> []
                       _ -> ["colspan" ~: show colspan]
@@ -270,8 +275,8 @@ elTable rows cfg = do
       elAttrs' "tbody" tbodyAttrs $
         listWithKey rows $ \k row ->
           elAttrs' "tr" (trAttrs k row) $
-            for cols $ \col -> mdo
-              td@(_, tdVal) <- elAttrs' "td" (tdAttrs tdVal k row) $ col k row
+            for cols $ \(colAttrs, col) -> mdo
+              td@(_, tdVal) <- elAttrs' "td" (colAttrs <> tdAttrs tdVal k row) $ col k row
               pure td
 
     pure (thead, tbody)

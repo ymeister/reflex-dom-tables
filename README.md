@@ -47,15 +47,15 @@ basicTable
   -> m ()
 basicTable people = do
   let columns =
-        [ TH
+        [ TH []
             ( text "Name"
             , \_ p -> text (personName p)
             )
-        , TH
+        , TH []
             ( text "Age"
             , \_ p -> text (T.pack $ show $ personAge p)
             )
-        , TH
+        , TH []
             ( text "City"
             , \_ p -> text (personCity p)
             )
@@ -79,15 +79,15 @@ sortableTable people = do
 
   -- Define columns with sort triggers
   let columns =
-        [ TH
+        [ TH []
             ( sortHeader "Name" updateSort nameComparison
             , \_ p -> text (personName p)
             )
-        , TH
+        , TH []
             ( sortHeader "Age" updateSort ageComparison
             , \_ p -> text (T.pack $ show $ personAge p)
             )
-        , TH
+        , TH []
             ( text "City"  -- Not sortable
             , \_ p -> text (personCity p)
             )
@@ -133,37 +133,37 @@ filterableTable people = do
 hierarchicalTable :: (...) => Dynamic t (Map Int SalesData) -> m ()
 hierarchicalTable sales = do
   let columns =
-        [ TH
+        [ TH []
             ( text "Product"
             , \_ s -> text (productName s)
             )
-        , THs
+        , THs ["class" ~: "quarter-data"]  -- Attributes cascade to subcolumns
             ( text "Q1"
-            , [ TH
+            , [ TH []
                   ( text "Jan"
                   , \_ s -> text $ showSales (janSales s)
                   )
-              , TH
+              , TH []
                   ( text "Feb"
                   , \_ s -> text $ showSales (febSales s)
                   )
-              , TH
+              , TH []
                   ( text "Mar"
                   , \_ s -> text $ showSales (marSales s)
                   )
               ]
             )
-        , THs
+        , THs ["class" ~: "quarter-data"]
             ( text "Q2"
-            , [ TH
+            , [ TH []
                   ( text "Apr"
                   , \_ s -> text $ showSales (aprSales s)
                   )
-              , TH
+              , TH []
                   ( text "May"
                   , \_ s -> text $ showSales (maySales s)
                   )
-              , TH
+              , TH []
                   ( text "Jun"
                   , \_ s -> text $ showSales (junSales s)
                   )
@@ -176,6 +176,34 @@ hierarchicalTable sales = do
 ```
 
 ## Advanced Features
+
+### Column-Level Attributes
+
+You can set attributes directly on columns, and `THs` attributes cascade to their subcolumns:
+
+```haskell
+columnsWithStyles :: (...) => [TableColumn Int Person (m ()) (m ()) t m]
+columnsWithStyles =
+  [ TH ["class" ~: "name-column"]
+      ( text "Name"
+      , \_ p -> text (personName p)
+      )
+  , THs ["class" ~: "numeric-columns"]  -- Cascades to Age and Score
+      ( text "Stats"
+      , [ TH ["class" ~: "age"]  -- Combined with parent: "numeric-columns age"
+          ( text "Age"
+          , \_ p -> text (T.pack $ show $ personAge p)
+          )
+        , TH ["class" ~: "score"]  -- Combined with parent: "numeric-columns score"
+          ( text "Score"
+          , \_ p -> text (T.pack $ show $ personScore p)
+          )
+        ]
+      )
+  ]
+```
+
+Column attributes are combined with dynamic attributes from `tableConfig_tdAttrs` and `tableConfig_thAttrs`, giving you fine-grained control over styling.
 
 ### Custom Attributes
 
@@ -226,7 +254,9 @@ interactiveTable people = do
 ### Core Types
 
 - `TableConfig`: Configuration for table rendering
-- `TableColumn`: Column definitions (TD, TH, THs)
+- `TableColumn`: Column definitions with attributes (TD, TH, THs)
+  - Each constructor takes `[Attrs t m]` for column-specific styling
+  - `THs` attributes cascade to subcolumns
 - `Table`: Result structure containing element references
 - `TableSortConfig`: Sorting configuration using comparison functions
 - `TableFilterConfig`: Filtering configuration with predicates
