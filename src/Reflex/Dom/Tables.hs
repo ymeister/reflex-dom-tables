@@ -21,9 +21,8 @@ import Control.Monad.Fix
 import Control.Monad.Writer.Strict (MonadWriter(..), execWriter)
 import Data.Default
 import Data.Functor.Compose
-import Data.Functor.Const
+import Data.Functor.Contravariant
 import Data.Functor.Identity
-import Data.Functor.Product
 import Data.List qualified as List
 import Data.Map (Map)
 import Data.Map qualified as Map
@@ -206,7 +205,7 @@ elTable rows cfg = do
 --
 
 type TableSortConfig columnsHKD = columnsHKD ColumnSortConfig
-type ColumnSortConfig = Const (Maybe Bool)
+type ColumnSortConfig = Maybe `Compose` Comparison
 
 tableSortedRows
   :: forall hkt rowHKD key row t m.
@@ -216,12 +215,9 @@ tableSortedRows
      , PerformEvent t m
      --
      , ConstructHKD rowHKD row hkt Identity
-     , HKDFieldsHave Ord rowHKD
      , IsHKD rowHKD hkt ColumnSortConfig
      , IsHKD rowHKD hkt Identity
      , IsHKD rowHKD hkt (Identity :*: Identity)
-     , IsHKD rowHKD hkt (Dict Ord)
-     , IsHKD rowHKD hkt (Dict Ord `Product` (Identity :*: Identity))
      )
   => Dynamic t (Map key row)
   -> m
@@ -232,19 +228,16 @@ tableSortedRows
       )
 tableSortedRows = foldDynWithTrigger go initSortConfig
   where
-    initSortConfig = pureHKD @rowHKD @hkt $ Const Nothing
+    initSortConfig = pureHKD @rowHKD @hkt $ Compose Nothing
     --
     go = liftA2 (tableSortRows @hkt)
 
 tableSortRows
   :: forall hkt rowHKD key row.
      ( ConstructHKD rowHKD row hkt Identity
-     , HKDFieldsHave Ord rowHKD
      , IsHKD rowHKD hkt ColumnSortConfig
      , IsHKD rowHKD hkt Identity
      , IsHKD rowHKD hkt (Identity :*: Identity)
-     , IsHKD rowHKD hkt (Dict Ord)
-     , IsHKD rowHKD hkt (Dict Ord `Product` (Identity :*: Identity))
      )
   => TableSortConfig rowHKD
   -> Map key row
@@ -260,12 +253,9 @@ tableSortedRows'
      , TriggerEvent t m
      , PerformEvent t m
      --
-     , HKDFieldsHave Ord rowHKD
      , IsHKD rowHKD hkt ColumnSortConfig
      , IsHKD rowHKD hkt Identity
      , IsHKD rowHKD hkt (Identity :*: Identity)
-     , IsHKD rowHKD hkt (Dict Ord)
-     , IsHKD rowHKD hkt (Dict Ord `Product` (Identity :*: Identity))
      )
   => Dynamic t (Map key (rowHKD Identity))
   -> m
@@ -276,18 +266,15 @@ tableSortedRows'
       )
 tableSortedRows' = foldDynWithTrigger go initSortConfig
   where
-    initSortConfig = pureHKD @rowHKD @hkt $ Const Nothing
+    initSortConfig = pureHKD @rowHKD @hkt $ Compose Nothing
     --
     go = liftA2 (tableSortRows' @hkt)
 
 tableSortRows'
   :: forall hkt key rowHKD.
-     ( HKDFieldsHave Ord rowHKD
-     , IsHKD rowHKD hkt ColumnSortConfig
+     ( IsHKD rowHKD hkt ColumnSortConfig
      , IsHKD rowHKD hkt Identity
      , IsHKD rowHKD hkt (Identity :*: Identity)
-     , IsHKD rowHKD hkt (Dict Ord)
-     , IsHKD rowHKD hkt (Dict Ord `Product` (Identity :*: Identity))
      )
   => TableSortConfig rowHKD
   -> Map key (rowHKD Identity)
@@ -304,7 +291,7 @@ tableSortRows' sortConfig rowsMap = Map.fromAscList $ zip [0..] sortedRowsList
       or $ execWriter $ traverseHKD @rowHKD @hkt
         ( \columnConfig -> do
             case columnConfig of
-              Const (Just _) -> tell [True]
+              Compose (Just _) -> tell [True]
               _ -> pure ()
             pure columnConfig
         )
@@ -316,22 +303,17 @@ tableSortRows' sortConfig rowsMap = Map.fromAscList $ zip [0..] sortedRowsList
         orderings :: [Ordering]
         orderings =
           execWriter $ bitraverseHKD @rowHKD @hkt
-            ( \columnConfig (Pair Dict (colA :*: colB)) -> do
+            ( \columnConfig (Identity colA :*: Identity colB) -> do
                 case columnConfig of
-                  Const (Just direction) ->
-                    case direction of
-                      True -> tell $ [compare colA colB]
-                      False -> tell $ [compare colB colA]
+                  Compose (Just (Comparison comparison)) -> tell $ [comparison colA colB]
                   _ -> pure ()
                 pure columnConfig
             )
             sortConfig
             zippedAB
         --
-        zippedAB :: rowHKD (Dict Ord `Product` (Identity :*: Identity))
-        zippedAB =
-            withConstrainedFieldsHKD @Ord @rowHKD @hkt
-          $ zipHKD @rowHKD @hkt (:*:) a b
+        zippedAB :: rowHKD (Identity :*: Identity)
+        zippedAB = zipHKD @rowHKD @hkt (:*:) a b
     --
     rowsList :: [(key, rowHKD Identity)]
     rowsList = Map.toList rowsMap
